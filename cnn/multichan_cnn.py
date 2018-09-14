@@ -10,7 +10,6 @@ from keras.layers import Embedding
 from keras.layers.convolutional import Conv1D
 from keras.layers.convolutional import MaxPooling1D
 from keras.layers.merge import concatenate
-import pandas as pd
 from numpy import arange
 
 
@@ -94,7 +93,7 @@ class MultiChanCnn(object):
             # save the model
             model.save('multich_ccn_model.h5')
 
-        return model
+        return tokenizer, model
 
     @staticmethod
     def train_test_split(df, test_size=0.25, random_state=None):
@@ -106,15 +105,13 @@ class MultiChanCnn(object):
                               Seed for the random number generator (if int), or numpy RandomState object
         :return train, test: dataframe of train and test"""
 
-        train, test = pd.DataFrame([]), pd.DataFrame([])
-        label = df['label'].unique()
         test_size = int(df['label'].shape[0] * test_size)
         train_size = df['label'].shape[0] - test_size
         shuffled = df.sample(frac=1, random_state=random_state)
         shuffled = shuffled.reset_index(drop=True)
-        for lbl in label:
-            train = shuffled[shuffled.loc[:, 'label'] == lbl].loc[:train_size, :]
-            test = shuffled[shuffled.loc[:, 'label'] == lbl].loc[train_size:, :]
+
+        train = shuffled.loc[:train_size, :]
+        test = shuffled.loc[train_size:, :]
 
         return train, test
 
