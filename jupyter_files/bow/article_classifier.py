@@ -146,7 +146,7 @@ class ArticleClassifier(object):
         if self.print_report:
             print("classification report:")
             print(metrics.classification_report(self.y_test, pred,
-                                                target_names=self.y_test))
+                                                target_names=clf.classes_))
 
         if self.print_cm:
             print("confusion matrix:")
@@ -154,6 +154,66 @@ class ArticleClassifier(object):
 
         print()
         clf_descr = str(clf).split('(')[0]
+        return clf_descr, score, train_time, test_time
+
+    def select_perceptron(self, n_iter=50, store=False):
+        """Selects perceptron classifier"""
+        # Display progress logs on stdout
+        logging.basicConfig(level=logging.INFO,
+                            format='%(asctime)s %(levelname)s %(message)s')
+
+        def trim(s):
+            """Trim string to fit on terminal (assuming 80-column display)"""
+            return s if len(s) <= 80 else s[:77] + "..."
+
+        print('=' * 80)
+
+        clf = Perceptron(n_iter=n_iter)
+
+        print("Training: ")
+        print(clf)
+        t0 = time()
+        clf.fit(self.X_train, self.y_train)
+        train_time = time() - t0
+        print("train time: %0.3fs" % train_time)
+
+        t0 = time()
+        pred = clf.predict(self.X_test)
+        test_time = time() - t0
+        print("test time:  %0.3fs" % test_time)
+
+        score = metrics.accuracy_score(self.y_test, pred)
+        print("accuracy:   %0.3f" % score)
+
+        if hasattr(clf, 'coef_'):
+            print("dimensionality: %d" % clf.coef_.shape[1])
+            print("density: %f" % density(clf.coef_))
+
+            if self.print_top10 and self.feature_names is not None:
+                print("top 10 keywords per class:")
+                for i, label in enumerate(clf.classes_):
+                    top10 = np.argsort(clf.coef_[i])[-10:]
+                    print(trim("%s: %s" % (label, " ".join(self.feature_names[top10]))))
+            print()
+
+        if self.print_report:
+            print("classification report:")
+            print(metrics.classification_report(self.y_test, pred,
+                                                target_names=clf.classes_))
+
+        if self.print_cm:
+            print("confusion matrix:")
+            print(metrics.confusion_matrix(self.y_test, pred))
+
+        print()
+        clf_descr = str(clf).split('(')[0]
+
+        if store:
+            base, f_name = os.path.split(os.path.abspath('article_classifier.py'))
+            filename = base + '/' + 'perceptron_clf.pkl'
+            joblib.dump(clf, filename)
+            print('Saved ', os.path.abspath(filename))
+
         return clf_descr, score, train_time, test_time
 
     def select_sgdclf(self, penalty="elasticnet", store=False):
@@ -202,7 +262,7 @@ class ArticleClassifier(object):
         if self.print_report:
             print("classification report:")
             print(metrics.classification_report(self.y_test, pred,
-                                                target_names=self.y_test))
+                                                target_names=clf.classes_))
 
         if self.print_cm:
             print("confusion matrix:")
@@ -262,7 +322,7 @@ class ArticleClassifier(object):
         if self.print_report:
             print("classification report:")
             print(metrics.classification_report(self.y_test, pred,
-                                                target_names=self.y_test))
+                                                target_names=clf.classes_))
 
         if self.print_cm:
             print("confusion matrix:")
@@ -323,7 +383,7 @@ class ArticleClassifier(object):
         if self.print_report:
             print("classification report:")
             print(metrics.classification_report(self.y_test, pred,
-                                                target_names=self.y_test))
+                                                target_names=clf.classes_))
 
         if self.print_cm:
             print("confusion matrix:")
@@ -384,7 +444,7 @@ class ArticleClassifier(object):
         if self.print_report:
             print("classification report:")
             print(metrics.classification_report(self.y_test, pred,
-                                                target_names=self.y_test))
+                                                target_names=clf.classes_))
 
         if self.print_cm:
             print("confusion matrix:")
@@ -445,7 +505,7 @@ class ArticleClassifier(object):
         if self.print_report:
             print("classification report:")
             print(metrics.classification_report(self.y_test, pred,
-                                                target_names=self.y_test))
+                                                target_names=clf.classes_))
 
         if self.print_cm:
             print("confusion matrix:")
@@ -462,7 +522,8 @@ class ArticleClassifier(object):
 
         return clf_descr, score, train_time, test_time
 
-    def extract_features(self, df, max_df=0.5, stop_words='english', ngram_range=(1, 1), store_vect=True):
+    def extract_features(self, df, max_df=0.5, stop_words='english', ngram_range=(1, 1),
+                         store_vect=True, random_state=None):
         """Extracts features
 
         :param df: dataframe with column keys, 'input' and 'label',
@@ -471,6 +532,7 @@ class ArticleClassifier(object):
         :param stop_words: list of stop words for feature extraction. Default is english.
         :param ngram_range: range of gram to be used in type tuple. Default is (1, 1)
         :param store_vect: store vectorizer to pickle
+        :param random_state: train_test_split param, RandomState instance or None, optional (default=None)
         :return x_train, x_test, y_train, y_test:
         vectorized sets of train and test with .8:.2 ratio, respectively"""
 
@@ -478,7 +540,7 @@ class ArticleClassifier(object):
         print("Extracting features from the training data using a sparse vectorizer")
         t0 = time()
 
-        x_train, x_test, y_train, y_test = train_test_split(df['input'], df['label'])
+        x_train, x_test, y_train, y_test = train_test_split(df['input'], df['label'], random_state=random_state)
 
         print('Training set: ', len(y_train))
         print('Testing set: ', len(y_test))
@@ -544,91 +606,6 @@ class ArticleClassifier(object):
             print('Saved ', os.path.abspath(filename))
 
         return x_train, x_test, y_train, y_test
-
-    @staticmethod
-    def fetch_data_set(domain, pub_date, period=None):
-        """Retrieves data set.
-
-        :return df: dataframe with column headers, 'input' and 'label'"""
-
-        def extract_section_subsection(url_list):
-            """Extracts section and subsection from list of url."""
-            net_loc = []
-            section, subsection, pk, slug, native = [], [], [], [], []
-
-            parsed_result = [urlsplit(o) for o in url_list]  # query and fragments are strip off
-            for o in parsed_result:
-                net_loc.append(o.netloc)
-
-                # FIND NATIVE
-                if re.search('adv-con|adv-com|adv-pr', o.path):
-                    native.append(1)
-                else:
-                    native.append(0)
-
-                # FIND SLUG PATTERN AND STRIP OFF
-                new_path = ''  # set to empty str
-                if '/index.php' in o.path:
-                    new_path = o.path.split('/index.php')
-                elif '/mobile' in o.path:
-                    new_path = o.path.split('/mobile')
-                elif '/gallery/' in o.path or '/page/' in o.path or '?page=' in o.path:
-                    new_path = o.path.split('/gallery/')
-                    new_path = new_path[0].split('/page/')
-                    new_path = new_path[0].split('?page=')
-
-                # SPLIT PATH INTO COMPONENTS
-                if new_path:  # if not empty str, means new_path is set to list including ['']
-                    path_contents = new_path[0].split('/')
-                else:
-                    path_contents = o.path.split('/')
-
-                # FIND PK
-                dum_pk = [x for x in path_contents if x.isdigit()]
-                if dum_pk:
-                    pk.append(dum_pk[0])
-                else:
-                    pk.append(0)
-
-                # ASSIGN SECTION, SUB-SECTION, SLUG
-                dum_var = [x for x in path_contents if
-                           (not x.isdigit() and re.search(r'[\w-]+(?!\s)', x))]  # search non-digit,exclude empty
-                # print('dum var: ', dum_var)
-
-                if len(dum_var) > 2:  # section, subsection and slug
-                    section.append(dum_var[0])
-                    subsection.append(dum_var[1])
-                    slug.append(dum_var[-1])
-                elif len(dum_var) == 2:  # only section and slug
-
-                    section.append(dum_var[0])
-                    subsection.append(dum_var[0])  # section is the same subsection
-                    slug.append(dum_var[1])
-                elif len(dum_var) == 1:  # only slug in var
-                    section.append('')  # empty sections
-                    subsection.append('')
-                    slug.append(dum_var[0])
-                else:
-                    section.append('')
-                    subsection.append('')
-                    slug.append('')
-                    print('No Slug! ', o)
-                    # print('slugs: ', slug)
-                    # print(section, subsection, pk, slug, net_loc)
-
-            return section, subsection
-
-        fetcher = ArticleFetch(domain, pub_date, period)
-        url_contents = fetcher.fetch()
-        data = list(url_contents)
-        df = pd.DataFrame({'url': [url for (idx, url, title, blurb, content) in data],
-                           'title': [title for (idx, url, title, blurb, content) in data],
-                           'blurb': [blurb for (idx, url, title, blurb, content) in data],
-                           'content': [cont for (idx, url, title, blurb, cont) in data]})
-        df['section'], df['subsection'] = extract_section_subsection(df['url'])
-        df['input'] = df['title'] + ' ' + df['blurb'] + ' ' + df['content']
-        df['label'] = df['section'] + '.' + df['subsection']
-        return df.loc[:, ['input', 'label']]    # generalized keys
 
     @staticmethod
     def plot_clf(results):
