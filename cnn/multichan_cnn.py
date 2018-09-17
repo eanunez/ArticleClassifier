@@ -2,15 +2,12 @@ from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences
 from keras.utils.vis_utils import plot_model
 from keras.models import Model
-from keras.layers import Input
-from keras.layers import Dense
-from keras.layers import Flatten
-from keras.layers import Dropout
-from keras.layers import Embedding
+from keras.layers import Input, Dense, Flatten, Dropout, Embedding
 from keras.layers.convolutional import Conv1D
 from keras.layers.convolutional import MaxPooling1D
 from keras.layers.merge import concatenate
 from numpy import arange
+import joblib
 
 
 class MultiChanCnn(object):
@@ -30,6 +27,7 @@ class MultiChanCnn(object):
      This allows the document to be processed at different resolutions or different
      n-grams (groups of words) at a time, whilst the model learns how to best integrate
      these interpretations." - Jason Brownlee, Ph.D
+
      """
 
     classes_ = {}
@@ -41,7 +39,7 @@ class MultiChanCnn(object):
         """Trains the data
 
         :param df: Dataframe with column labeled, 'input' and 'label'
-        :param save: Saves the model.
+        :param save: Saves the model and tokenizer.
         :return returns the trained model."""
 
         # load training dataset
@@ -64,11 +62,11 @@ class MultiChanCnn(object):
         train_x = self.encode_text(tokenizer, train_lines, length)
         print('Train shape: ', train_x.shape)
 
-        # define model
-        model = self.define_model(length, vocab_size)
-
         # map classes
         self.map_classes(df)
+
+        # define model
+        model = self.define_model(length, vocab_size)
 
         # encode training classes
         train_y = self.encode_classes(train_df['label'].values)
@@ -91,7 +89,8 @@ class MultiChanCnn(object):
 
         if save:
             # save the model
-            model.save('multich_ccn_model.h5')
+            model.save('multich_cnn_model.h5')
+            joblib.dump(tokenizer, 'keras_tokenizer.pkl')
 
         return tokenizer, model
 
@@ -150,8 +149,7 @@ class MultiChanCnn(object):
         padded = pad_sequences(encoded, maxlen=length, padding='post')
         return padded
 
-    @staticmethod
-    def define_model(length, vocab_size):
+    def define_model(self, length, vocab_size):
         """Defines the multi-channel CNN model"""
         # channel 1
         inputs1 = Input(shape=(length,))
@@ -178,11 +176,24 @@ class MultiChanCnn(object):
         merged = concatenate([flat1, flat2, flat3])
         # interpretation
         dense1 = Dense(10, activation='relu')(merged)
-        outputs = Dense(1, activation='sigmoid')(dense1)
-        model = Model(inputs=[inputs1, inputs2, inputs3], outputs=outputs)
-        # compile
-        model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+        # initialize model
+        model = Model()
+
+        if len(self.classes_) > 2:
+            outputs = Dense(len(self.classes_), activation='sigmoid')(dense1)
+            model = Model(inputs=[inputs1, inputs2, inputs3], outputs=outputs)
+
+            # compile
+            # use 'categorical_crossentropy' for multi-classification problem
+            model.compile(loss='categorical_crossentropy', optimizer='rmsprop', metrics=['accuracy'])
+        elif len(self.classes_) == 2:
+            outputs = Dense(1, activation='sigmoid')(dense1)
+            model = Model(inputs=[inputs1, inputs2, inputs3], outputs=outputs)
+
+            # compile
+            # use 'binary_crossentropy' for binary classes
+            model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
         # summarize
         print(model.summary())
-        # plot_model(model, show_shapes=True, to_file='multichannel.png')
+        plot_model(model, show_shapes=True, to_file='multichannel.png')
         return model
