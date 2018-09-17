@@ -11,4 +11,5 @@ https://machinelearningmastery.com/develop-n-gram-multichannel-convolutional-neu
 in order to accept datasets in pandas' dataframe.
 
 ## One-Dimensional Convolutional Neural Network
-An example of generic classifier, 1D CNN using Keras, backened with Tensorflow. It accepts pandas dataframe as input for training and testing data. https://github.com/eanunez/ArticleClassifier/blob/master/cnn/One-Dimensional%20CNN.ipynb
+https://github.com/eanunez/ArticleClassifier/blob/master/cnn/One-Dimensional%20CNN.ipynb
+An example of generic classifier, 1D CNN using Keras, backened with Tensorflow. It accepts pandas dataframe as input for training and testing data. 
