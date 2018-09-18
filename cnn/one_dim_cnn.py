@@ -6,11 +6,11 @@ from __future__ import print_function
 
 from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences
-from keras.models import Sequential
-from keras.layers import Dense, Dropout, Activation
-from keras.layers import Embedding
-from keras.layers import Conv1D, GlobalMaxPooling1D
+from keras.layers import Dense, Input, Embedding, Dropout
+from keras.layers import Conv1D, MaxPooling1D, GlobalMaxPooling1D
 from keras.utils.vis_utils import plot_model
+from keras.utils.np_utils import to_categorical
+from keras.models import Model
 from numpy import arange
 import joblib
 
@@ -18,12 +18,12 @@ import joblib
 class OneDimCnn(object):
     classes_ = {}
 
-    def __init__(self, max_features=1e5, maxlen=500, batch_size=32, embedding_dims=50, filters=250, kernel_size=3,
+    def __init__(self, max_features=1e5, maxlen=1000, batch_size=128, embedding_dims=100, filters=128, kernel_size=5,
                  hidden_dims=250, epochs=10):
         """Constructor"""
         self.max_features = int(max_features)
         self.maxlen = int(maxlen)
-        self.batch_size = batch_size
+        self.batch_size = int(batch_size)
         self.embedding_dims = int(embedding_dims)
         self.filters = int(filters)
         self.kernel_size = int(kernel_size)
@@ -57,10 +57,13 @@ class OneDimCnn(object):
         print('Train shape: ', x_train.shape)
         print('Test shape: ', x_test.shape)
 
-        # encode training classes
+        # encode classes
         y_train = self.encode_classes(train_df['label'].values)
-        # encode test classes
         y_test = self.encode_classes(test_df['label'].values)
+
+        # vectorize classes
+        y_train = to_categorical(y_train, num_classes=len(self.classes_))
+        y_test = to_categorical(y_test, num_classes=len(self.classes_))
 
         print('Building model...')
         # define model
@@ -68,9 +71,12 @@ class OneDimCnn(object):
 
         model.fit(x_train, y_train, batch_size=self.batch_size, epochs=self.epochs, validation_data=(x_test, y_test))
 
+        # add class mapping to model
+        model.classes_ = self.classes_
+
         if save:
             # save the model
-            model.save('multich_cnn_model.h5')
+            model.save('onedim_cnn_model.h5')
             joblib.dump(tokenizer, 'keras_onedim_tokenizer.pkl')
 
         return tokenizer, model
@@ -78,44 +84,63 @@ class OneDimCnn(object):
     def define_model(self):
         """Defines 1-dimensional convolutional neural network."""
 
-        model = Sequential()
-
         # we start off with an efficient embedding layer which maps
         # our vocab indices into embedding_dims dimensions
-        model.add(Embedding(self.max_features, self.embedding_dims, input_length=self.maxlen))
-        model.add(Dropout(0.2))
+        embedding_layer = Embedding(self.max_features, self.embedding_dims, input_length=self.maxlen)
 
-        # we add a Convolution1D, which will learn filters
-        # word group filters of size filter_length:
-        model.add(Conv1D(self.filters, self.kernel_size, padding='valid', activation='relu', strides=1))
-        # we use max pooling:
-        model.add(GlobalMaxPooling1D())
+        # train a 1D convnet with global maxpooling
+        sequence_input = Input(shape=(self.maxlen,), dtype='int32')
+        embedded_sequences = embedding_layer(sequence_input)
+        # add dropout to avoid overfitting
+        x = Dropout(0.2)(embedded_sequences)
+        x = Conv1D(self.filters, self.kernel_size, padding='valid', activation='relu', strides=1)(x)
 
+        # x = MaxPooling1D(5)(x)
+        # x = Conv1D(self.filters, self.kernel_size, padding='valid', activation='relu', strides=1)(x)
+        # x = MaxPooling1D(5)(x)
+        # x = Conv1D(self.filters, self.kernel_size, padding='valid', activation='relu', strides=1)(x)
+        x = GlobalMaxPooling1D()(x)
         # We add a vanilla hidden layer:
-        model.add(Dense(self.hidden_dims))
-        model.add(Dropout(0.2))
-        model.add(Activation('relu'))
+        x = Dense(self.hidden_dims, activation='relu')(x)
+        x = Dropout(0.2)(x)
 
         if len(self.classes_) > 2:
-            model.add(Dense(len(self.classes_), activation='sigmoid'))
+            preds = Dense(len(self.classes_), activation='softmax')(x)
+
+            # create the model
+            model = Model(sequence_input, preds)
 
             # use 'categorical_crossentropy' for multi-classification problem
             model.compile(loss='categorical_crossentropy', optimizer='rmsprop', metrics=['accuracy'])
+            # summarize
+            print(model.summary())
+            plot_model(model, show_shapes=True, to_file='onedim_cnn.png')
+
+            return model
 
         if len(self.classes_) == 2:
-            # We project onto a single unit output layer, and squash it with a sigmoid:
-            model.add(Dense(1, activation='sigmoid'))
 
+            # We project onto a single unit output layer, and squash it with a softmax
+            preds = Dense(1, activation='softmax')(x)
+            # create the model
+            model = Model(sequence_input, preds)
             # use 'binary_crossentropy' for binary classes
             model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
-        # summarize
-        print(model.summary())
-        plot_model(model, show_shapes=True, to_file='onedim_cnn.png')
+            # summarize
+            print(model.summary())
+            plot_model(model, show_shapes=True, to_file='onedim_cnn.png')
 
-        return model
+            return model
+
+    def predict_class(self, model, sequences):
+        """Predicts class label."""
+        pred = model.predict(sequences)
+        class_int = int(pred.mean())
+
+        return self.classes_[class_int]
 
     @staticmethod
-    def train_test_split(df, test_size=0.25, random_state=None):
+    def train_test_split(df, test_size=0.2, random_state=None):
         """Splits dataframe to train and test
 
         :param df: A dataframe with column labels, 'input' and 'label'
@@ -138,12 +163,12 @@ class OneDimCnn(object):
         # map classes to int
         classes = df['label'].unique()
         classes_int = arange(df['label'].unique().shape[0])
-        self.classes_ = dict(zip(classes, classes_int))
+        self.classes_ = dict(zip(classes_int, classes))
 
     def encode_classes(self, arr):
         classes = self.classes_
         for key, val in classes.items():
-            arr[arr == key] = val
+            arr[arr == val] = key
         return arr
 
     @staticmethod
