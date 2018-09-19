@@ -18,8 +18,8 @@ import joblib
 class OneDimCnn(object):
     classes_ = {}
 
-    def __init__(self, max_features=1e5, maxlen=1000, batch_size=128, embedding_dims=100, filters=128, kernel_size=5,
-                 hidden_dims=250, epochs=10):
+    def __init__(self, max_features=1e5, maxlen=2000, batch_size=32, embedding_dims=100, filters=250, kernel_size=3,
+                 hidden_dims=250, epochs=20):
         """Constructor"""
         self.max_features = int(max_features)
         self.maxlen = int(maxlen)
@@ -120,8 +120,8 @@ class OneDimCnn(object):
 
         if len(self.classes_) == 2:
 
-            # We project onto a single unit output layer, and squash it with a softmax
-            preds = Dense(1, activation='softmax')(x)
+            # We project onto a single unit output layer, and squash it with a sigmoid
+            preds = Dense(1, activation='sigmoid')(x)
             # create the model
             model = Model(sequence_input, preds)
             # use 'binary_crossentropy' for binary classes
