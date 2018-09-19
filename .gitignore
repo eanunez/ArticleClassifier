@@ -1,7 +1,8 @@
-jupyter_files/bow/section_subsection/
-jupyter_files/bow/bbc/sgd_clf.pkl
-jupyter_files/bow/bbc/vectorizer.pkl
-jupyter_files/bow/bbc/bbc/
+
+bow/bbc/sgd_clf.pkl
+bow/bbc/vectorizer.pkl
+bow/bbc/data
+bow/bbc/ipynb_checkpoints
 cnn/__pycache__
 cnn/.ipynb_checkpoints
 cnn/data
