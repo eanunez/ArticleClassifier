@@ -35,6 +35,8 @@ def predict_bulk(vectorizer_fn, model_fn, df):
 
 def to_csv(df, fn):
     """Writes dataframe to csv file."""
+    
+    df = df.set_index('input')
     with open(fn, 'w+', encoding='latin-1', newline='') as file:
         df.to_csv(file)
     print('Output File: ', os.path.abspath(fn))
